@@ -77,7 +77,11 @@ export default function ChapterContent({
       }
     }
     document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    document.addEventListener('touchstart', onMouseDown, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('touchstart', onMouseDown);
+    };
   }, []);
 
   function handleMouseUp() {
@@ -166,6 +170,7 @@ export default function ChapterContent({
       className="content-area"
       ref={contentRef}
       onMouseUp={handleMouseUp}
+      onTouchEnd={handleMouseUp}
       onClick={handleContentClick}
     >
       {/* Highlight toolbar */}
