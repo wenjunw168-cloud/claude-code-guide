@@ -2,7 +2,11 @@
 import { useState } from 'react';
 import { PROVIDERS } from '../lib/providers';
 
-export default function Topbar({ meta, readChapters, totalChapters, apiKey, currentProvider, hlCount, onSettingsOpen, onHlPanelOpen, onMobileNavOpen }) {
+export default function Topbar({
+  meta, readChapters, totalChapters, apiKey, currentProvider,
+  hlCount, onSettingsOpen, onHlPanelOpen, onMobileNavOpen,
+  user, onLoginOpen, onLogout,
+}) {
   const [toast, setToast] = useState('');
 
   async function handleShare() {
@@ -12,24 +16,27 @@ export default function Topbar({ meta, readChapters, totalChapters, apiKey, curr
         await navigator.share({ title: document.title, url });
       } else {
         await navigator.clipboard.writeText(url);
-        setToast('链接已复制到剪贴板');
-        setTimeout(() => setToast(''), 2000);
+        showToast('链接已复制到剪贴板');
       }
     } catch {
       try {
         await navigator.clipboard.writeText(url);
-        setToast('链接已复制到剪贴板');
-        setTimeout(() => setToast(''), 2000);
+        showToast('链接已复制到剪贴板');
       } catch {
-        setToast('复制失败，请手动复制地址栏链接');
-        setTimeout(() => setToast(''), 3000);
+        showToast('复制失败，请手动复制地址栏链接');
       }
     }
+  }
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2500);
   }
 
   const readCount = readChapters.length;
   const isConfigured = !!apiKey;
   const providerName = PROVIDERS[currentProvider]?.name || '设置模型';
+  const shortEmail = user?.email ? user.email.replace(/(.{2}).*(@.*)/, '$1…$2') : '';
 
   return (
     <>
@@ -60,6 +67,15 @@ export default function Topbar({ meta, readChapters, totalChapters, apiKey, curr
           <span>分享</span>
         </button>
 
+        {user ? (
+          <div className="user-info">
+            <span className="user-email" title={user.email}>☁ {shortEmail}</span>
+            <button className="logout-btn" onClick={onLogout}>退出</button>
+          </div>
+        ) : (
+          <button className="login-btn" onClick={onLoginOpen}>登录同步</button>
+        )}
+
         <button
           className={`settings-btn${isConfigured ? ' configured' : ''}`}
           onClick={onSettingsOpen}
@@ -70,7 +86,6 @@ export default function Topbar({ meta, readChapters, totalChapters, apiKey, curr
         </button>
       </div>
 
-      {/* Toast */}
       <div className={`copy-toast${toast ? ' show' : ''}`}>{toast}</div>
     </>
   );

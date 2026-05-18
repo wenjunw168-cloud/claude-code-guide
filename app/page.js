@@ -7,6 +7,15 @@ import Resizer from '../components/Resizer';
 import ChatPanel from '../components/ChatPanel';
 import SettingsModal from '../components/SettingsModal';
 import HighlightPanel from '../components/HighlightPanel';
+import AuthModal from '../components/AuthModal';
+import {
+  supabase,
+  mergeHighlights,
+  fetchCloudHighlights,
+  upsertCloudHighlight,
+  upsertAllCloudHighlights,
+  deleteCloudHighlight,
+} from '../lib/supabase';
 
 function safeLocalGet(key, fallback) {
   if (typeof window === 'undefined') return fallback;
@@ -23,10 +32,13 @@ export default function Home() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hlPanelOpen, setHlPanelOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [apiKey, setApiKey] = useState(null);
   const [currentProvider, setCurrentProvider] = useState('anthropic');
   const [customProviderConfig, setCustomProviderConfig] = useState({ url: '', model: '' });
   const [quizQuestion, setQuizQuestion] = useState(null);
+  const [user, setUser] = useState(null);
+  const [syncToast, setSyncToast] = useState('');
   const chatPanelRef = useRef(null);
 
   // Load from storage on mount
@@ -42,19 +54,58 @@ export default function Home() {
     if (savedKey) setApiKey(savedKey);
     if (savedProvider) setCurrentProvider(savedProvider);
 
-    // Restore chat panel width
     const savedWidth = parseInt(localStorage.getItem('cc-chat-width'));
     if (savedWidth && savedWidth >= 200 && savedWidth <= 600 && chatPanelRef.current) {
       chatPanelRef.current.style.width = savedWidth + 'px';
     }
   }, []);
 
+  // Supabase auth listener
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        syncFromCloud(session.user);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const u = session?.user || null;
+      setUser(u);
+      if (u && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        syncFromCloud(u);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function syncFromCloud(u) {
+    try {
+      const cloudHighlights = await fetchCloudHighlights(u.id);
+      const localHighlights = safeLocalGet('cc-highlights', []);
+      const merged = mergeHighlights(localHighlights, cloudHighlights);
+      localStorage.setItem('cc-highlights', JSON.stringify(merged));
+      setHighlights(merged);
+      await upsertAllCloudHighlights(merged, u.id);
+      showSyncToast(`☁ 已同步 ${merged.length} 条标记`);
+    } catch (e) {
+      console.error('Sync failed:', e);
+    }
+  }
+
+  function showSyncToast(msg) {
+    setSyncToast(msg);
+    setTimeout(() => setSyncToast(''), 3000);
+  }
+
   // Load content.json
   useEffect(() => {
     fetch('/content.json')
       .then(r => r.json())
       .then(json => {
-        // Restore section edits from localStorage
         const edits = {};
         json.chapters.forEach(ch => {
           ch.sections.forEach((_, idx) => {
@@ -65,30 +116,21 @@ export default function Home() {
         setSectionEdits(edits);
         setData(json);
 
-        // Navigate to chapter from URL hash
         const hash = window.location.hash.slice(1);
         const startId = (hash && json.chapters.find(c => c.id === hash))
           ? hash
           : json.chapters[0].id;
         selectChapter(json, startId, []);
       })
-      .catch(() => {
-        console.error('Failed to load content.json');
-      });
+      .catch(console.error);
   }, []);
 
   function selectChapter(dataObj, id, currentRead) {
     const chapters = (dataObj || data)?.chapters || [];
-    const chapter = chapters.find(c => c.id === id);
-    if (!chapter) return;
+    if (!chapters.find(c => c.id === id)) return;
     setCurrentChapterId(id);
+    if (typeof window !== 'undefined') history.replaceState(null, '', '#' + id);
 
-    // Update URL hash for sharing
-    if (typeof window !== 'undefined') {
-      history.replaceState(null, '', '#' + id);
-    }
-
-    // Mark as read
     const read = currentRead || readChapters;
     if (!read.includes(id)) {
       const newRead = [...read, id];
@@ -97,9 +139,7 @@ export default function Home() {
     }
   }
 
-  function handleSelectChapter(id) {
-    selectChapter(null, id, null);
-  }
+  function handleSelectChapter(id) { selectChapter(null, id, null); }
 
   function toggleBookmark(id) {
     setBookmarks(prev => {
@@ -109,20 +149,26 @@ export default function Home() {
     });
   }
 
-  function addHighlight(newHighlight) {
+  async function addHighlight(newHighlight) {
     setHighlights(prev => {
       const next = [...prev, newHighlight];
       localStorage.setItem('cc-highlights', JSON.stringify(next));
       return next;
     });
+    if (user) {
+      try { await upsertCloudHighlight(newHighlight, user.id); } catch {}
+    }
   }
 
-  function deleteHighlight(id) {
+  async function deleteHighlight(id) {
     setHighlights(prev => {
       const next = prev.filter(h => h.id !== id).map((h, i) => ({ ...h, num: i + 1 }));
       localStorage.setItem('cc-highlights', JSON.stringify(next));
       return next;
     });
+    if (user) {
+      try { await deleteCloudHighlight(id); } catch {}
+    }
   }
 
   function saveEdit(chapterId, sectionIdx, value) {
@@ -146,6 +192,11 @@ export default function Home() {
     sessionStorage.removeItem('cc-provider');
   }
 
+  async function handleLogout() {
+    if (supabase) await supabase.auth.signOut();
+    setUser(null);
+  }
+
   function exportContent() {
     if (!data) return;
     const exported = JSON.parse(JSON.stringify(data));
@@ -162,18 +213,13 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  function handleAskQuiz(quizText) {
-    setQuizQuestion({ text: '我来回答思考题：' + quizText, id: Date.now() });
-  }
-
   const currentChapter = data?.chapters.find(c => c.id === currentChapterId);
 
   if (!data) {
     return (
       <main>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-3)', fontFamily: 'var(--font-ui)', fontSize: '13px', gap: '8px' }}>
-          <div className="dot-spin" />
-          加载中…
+          <div className="dot-spin" />加载中…
         </div>
       </main>
     );
@@ -191,6 +237,9 @@ export default function Home() {
         onSettingsOpen={() => setSettingsOpen(true)}
         onHlPanelOpen={() => setHlPanelOpen(true)}
         onMobileNavOpen={() => setMobileNavOpen(true)}
+        user={user}
+        onLoginOpen={() => setAuthOpen(true)}
+        onLogout={handleLogout}
       />
 
       <div className="layout">
@@ -210,7 +259,7 @@ export default function Home() {
               chapter={currentChapter}
               bookmarks={bookmarks}
               onToggleBookmark={toggleBookmark}
-              onAskQuiz={handleAskQuiz}
+              onAskQuiz={text => setQuizQuestion({ text: '我来回答思考题：' + text, id: Date.now() })}
               highlights={highlights}
               onAddHighlight={addHighlight}
               sectionEdits={sectionEdits}
@@ -250,6 +299,14 @@ export default function Home() {
         onClose={() => setHlPanelOpen(false)}
         onDelete={deleteHighlight}
       />
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+      />
+
+      {/* Sync toast */}
+      <div className={`sync-toast${syncToast ? ' show' : ''}`}>{syncToast}</div>
     </main>
   );
 }

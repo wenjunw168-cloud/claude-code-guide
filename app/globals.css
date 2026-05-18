@@ -1192,3 +1192,66 @@ html, body {
   .chat-resizer { display: none; }
   .content-area { padding: 1.25rem; max-width: 100%; }
 }
+
+/* ── Auth ── */
+.login-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.login-btn:hover { background: var(--accent); color: var(--bg); }
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.user-email {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.logout-btn {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.logout-btn:hover { color: var(--red); border-color: var(--red); }
+
+.sync-toast {
+  position: fixed;
+  bottom: 32px;
+  right: 24px;
+  background: var(--bg-3);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  z-index: 3000;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.sync-toast.show { opacity: 1; }

@@ -88,6 +88,35 @@ python3 proxy.py
 - **阅读进度**：顶部进度条记录读过的章节数
 - **思考题**：每章末尾可直接向 AI 发起讨论
 
+## 今日技术栈总结（2026-05-11）
+
+今天的改动全部基于原生技术，没有引入任何新依赖。
+
+### 前端（index.html）
+
+| 功能 | 技术 |
+|------|------|
+| 可拖动分栏 | CSS Flexbox、`mousedown/mousemove/mouseup` 事件、`localStorage` |
+| 文字选中检测 | `Selection API`（`window.getSelection()`）、`Range.getBoundingClientRect()` |
+| 正文标记还原 | `DOM TreeWalker`（遍历文本节点）、`DocumentFragment`、动态创建 `<mark>` 元素 |
+| 角标样式 | CSS `position: relative` + `::after` 伪元素 + `content: attr(data-num)` |
+| 数据持久化 | `localStorage`（JSON 序列化） |
+| 浮层定位 | CSS `position: fixed` + JS 动态计算坐标 |
+
+### 后端（proxy.py）
+
+| 功能 | 技术 |
+|------|------|
+| 静态文件服务 | Python 标准库 `http.server.SimpleHTTPRequestHandler` |
+| API 转发 | `subprocess` 调用系统 `curl`，继承环境变量代理设置 |
+| 错误处理 | 检测空响应，返回结构化 JSON 错误 |
+
+### 说明
+
+proxy.py 的作用是解决浏览器 CORS 跨域限制——浏览器不能直接请求第三方
+API，通过本地服务器转发后，服务器之间不受 CORS 约束。等效方案包括
+Next.js API Routes 部署到 Vercel，优势是用户无需本地启动任何服务。
+
 ## 分享给他人
 
 最简单：把整个文件夹发给对方（ZIP 压缩后），对方用同样方式启动本地服务器即可。
